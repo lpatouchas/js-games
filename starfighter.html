@@ -283,6 +283,73 @@
   }
   .pause-btn.hidden { display: none; }
 
+  /* Mute button — always visible */
+  .mute-btn {
+    position: absolute;
+    top: 10px;
+    left: calc(50% - 40px);
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    margin: 0;
+    border: 2px solid var(--neon-magenta);
+    background: rgba(4, 2, 15, 0.7);
+    color: var(--neon-magenta);
+    font-size: 16px;
+    font-family: sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 10px rgba(255, 43, 214, 0.4);
+    transition: all 0.15s;
+    z-index: 30;
+    letter-spacing: 0;
+  }
+  .mute-btn:hover {
+    background: var(--neon-magenta);
+    color: var(--bg-deep);
+    box-shadow: 0 0 20px var(--neon-magenta);
+  }
+
+  /* Music toggle button — next to mute */
+  .music-btn {
+    position: absolute;
+    top: 10px;
+    left: calc(50% + 4px);
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    margin: 0;
+    border: 2px solid var(--neon-yellow);
+    background: rgba(4, 2, 15, 0.7);
+    color: var(--neon-yellow);
+    font-size: 16px;
+    font-family: sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 10px rgba(255, 230, 0, 0.4);
+    transition: all 0.15s;
+    z-index: 30;
+    letter-spacing: 0;
+  }
+  .music-btn:hover {
+    background: var(--neon-yellow);
+    color: var(--bg-deep);
+    box-shadow: 0 0 20px var(--neon-yellow);
+  }
+  .music-btn.off {
+    border-color: #555;
+    color: #555;
+    box-shadow: none;
+  }
+
   /* Big level banner */
   #level-banner {
     position: absolute;
@@ -333,6 +400,8 @@
       <span class="hud-value" id="hud-level">—</span>
     </div>
     <button id="btn-pause" class="pause-btn" title="Παύση (ENTER)">⏸</button>
+    <button id="btn-mute" class="mute-btn" title="Ένταση ήχου">🔊</button>
+    <button id="btn-music" class="music-btn" title="Μουσική">🎵</button>
   </div>
 
   <div id="level-banner"></div>
@@ -389,6 +458,348 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = canvas.width;
 const H = canvas.height;
+
+/* ---------- AUDIO SYSTEM (Web Audio synthesis) ---------- */
+const Audio = {
+  ctx: null,
+  master: null,
+  muted: false,
+
+  init() {
+    if (this.ctx) return;
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.35;
+      this.master.connect(this.ctx.destination);
+    } catch(e) { console.warn('Audio init failed', e); }
+  },
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  },
+
+  setMuted(m) {
+    this.muted = m;
+    if (this.master) this.master.gain.value = m ? 0 : 0.35;
+  },
+
+  // helper: schedule a tone with envelope
+  tone({ freq = 440, freq2 = null, type = 'square', dur = 0.15, vol = 0.3, attack = 0.005, release = 0.08 }) {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    if (freq2 !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq2), t + dur);
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(vol, t + attack);
+    gain.gain.linearRampToValueAtTime(0.0001, t + dur + release);
+    osc.connect(gain).connect(this.master);
+    osc.start(t);
+    osc.stop(t + dur + release + 0.02);
+  },
+
+  // helper: noise burst (for explosions, hits)
+  noise({ dur = 0.2, vol = 0.4, lowpass = 800, attack = 0.001 }) {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime;
+    const buf = this.ctx.createBuffer(1, this.ctx.sampleRate * dur, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(lowpass, t);
+    filter.frequency.exponentialRampToValueAtTime(80, t + dur);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(vol, t + attack);
+    gain.gain.linearRampToValueAtTime(0.0001, t + dur);
+    src.connect(filter).connect(gain).connect(this.master);
+    src.start(t);
+    src.stop(t + dur + 0.02);
+  },
+
+  // -- Sound effects --
+  shoot(weapon) {
+    if (!this.ctx || this.muted) return;
+    switch(weapon) {
+      case 'single':
+        this.tone({ freq: 880, freq2: 220, type: 'square', dur: 0.08, vol: 0.18 });
+        break;
+      case 'twin':
+        this.tone({ freq: 1100, freq2: 400, type: 'square', dur: 0.06, vol: 0.14 });
+        this.tone({ freq: 1300, freq2: 500, type: 'square', dur: 0.06, vol: 0.12 });
+        break;
+      case 'spread':
+        this.tone({ freq: 320, freq2: 80, type: 'sawtooth', dur: 0.18, vol: 0.22 });
+        this.noise({ dur: 0.12, vol: 0.18, lowpass: 1500 });
+        break;
+      case 'piercing':
+        this.tone({ freq: 1800, freq2: 600, type: 'sawtooth', dur: 0.22, vol: 0.2 });
+        this.tone({ freq: 2400, freq2: 800, type: 'square', dur: 0.15, vol: 0.1 });
+        break;
+      case 'plasma':
+        this.tone({ freq: 180, freq2: 60, type: 'sawtooth', dur: 0.3, vol: 0.28 });
+        this.tone({ freq: 600, freq2: 200, type: 'sine', dur: 0.25, vol: 0.18 });
+        this.noise({ dur: 0.15, vol: 0.2, lowpass: 600 });
+        break;
+      case 'flamewave':
+        this.noise({ dur: 0.35, vol: 0.3, lowpass: 1200 });
+        this.tone({ freq: 220, freq2: 80, type: 'sawtooth', dur: 0.3, vol: 0.2 });
+        break;
+      case 'voidbeam':
+        this.tone({ freq: 80, freq2: 30, type: 'sawtooth', dur: 0.4, vol: 0.3 });
+        this.tone({ freq: 1200, freq2: 200, type: 'sine', dur: 0.35, vol: 0.18 });
+        this.noise({ dur: 0.25, vol: 0.15, lowpass: 400 });
+        break;
+    }
+  },
+
+  explosion(big = false) {
+    if (!this.ctx || this.muted) return;
+    this.noise({ dur: big ? 0.5 : 0.25, vol: big ? 0.5 : 0.32, lowpass: big ? 1000 : 1500 });
+    this.tone({ freq: big ? 120 : 200, freq2: big ? 30 : 50, type: 'sawtooth', dur: big ? 0.4 : 0.2, vol: big ? 0.3 : 0.2 });
+  },
+
+  hit() {
+    if (!this.ctx || this.muted) return;
+    this.tone({ freq: 200, freq2: 80, type: 'square', dur: 0.18, vol: 0.3 });
+    this.noise({ dur: 0.15, vol: 0.25, lowpass: 800 });
+  },
+
+  hitEnemy() {
+    if (!this.ctx || this.muted) return;
+    this.tone({ freq: 600, freq2: 1200, type: 'square', dur: 0.04, vol: 0.1 });
+  },
+
+  click() {
+    if (!this.ctx || this.muted) return;
+    this.tone({ freq: 800, type: 'square', dur: 0.05, vol: 0.15 });
+  },
+
+  hover() {
+    if (!this.ctx || this.muted) return;
+    this.tone({ freq: 1200, type: 'sine', dur: 0.03, vol: 0.06 });
+  },
+
+  victory() {
+    if (!this.ctx || this.muted) return;
+    const notes = [440, 554, 659, 880];
+    notes.forEach((f, i) => {
+      setTimeout(() => this.tone({ freq: f, type: 'square', dur: 0.15, vol: 0.22 }), i * 100);
+    });
+  },
+
+  defeat() {
+    if (!this.ctx || this.muted) return;
+    this.tone({ freq: 440, freq2: 110, type: 'sawtooth', dur: 0.6, vol: 0.3 });
+    setTimeout(() => this.tone({ freq: 220, freq2: 55, type: 'sawtooth', dur: 0.8, vol: 0.3 }), 200);
+  },
+
+  unlock() {
+    if (!this.ctx || this.muted) return;
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((f, i) => {
+      setTimeout(() => this.tone({ freq: f, type: 'sine', dur: 0.18, vol: 0.18 }), i * 80);
+    });
+  },
+
+  pauseSound() {
+    if (!this.ctx || this.muted) return;
+    this.tone({ freq: 600, freq2: 400, type: 'square', dur: 0.1, vol: 0.15 });
+  },
+
+  waveStart() {
+    if (!this.ctx || this.muted) return;
+    this.tone({ freq: 330, type: 'square', dur: 0.08, vol: 0.18 });
+    setTimeout(() => this.tone({ freq: 440, type: 'square', dur: 0.12, vol: 0.18 }), 80);
+  },
+};
+
+/* ---------- BACKGROUND MUSIC (Web Audio synthesis) ---------- */
+const Music = {
+  current: null,    // 'menu' | 'battle' | null
+  timers: [],
+  bassNode: null,
+  padNode: null,
+  musicGain: null,
+  enabled: true,
+
+  // Note frequencies (in Hz) for a few useful pitches
+  notes: {
+    E2: 82.41, F2: 87.31, G2: 98,    A2: 110,   B2: 123.47,
+    C3: 130.81,D3: 146.83,E3: 164.81,F3: 174.61,G3: 196,    A3: 220,   B3: 246.94,
+    C4: 261.63,D4: 293.66,E4: 329.63,F4: 349.23,G4: 392,    A4: 440,   B4: 493.88,
+    C5: 523.25,D5: 587.33,E5: 659.25,F5: 698.46,G5: 783.99, A5: 880,
+  },
+
+  setup() {
+    if (!Audio.ctx) Audio.init();
+    if (!Audio.ctx) return false;
+    if (!this.musicGain) {
+      this.musicGain = Audio.ctx.createGain();
+      this.musicGain.gain.value = 0.18;  // music quieter than SFX
+      this.musicGain.connect(Audio.master);
+    }
+    return true;
+  },
+
+  // Play a note with a given waveform, attack/release envelope
+  playNote(freq, time, dur, type = 'triangle', vol = 0.2) {
+    const osc = Audio.ctx.createOscillator();
+    const gain = Audio.ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vol, time + 0.02);
+    gain.gain.linearRampToValueAtTime(vol * 0.6, time + dur * 0.3);
+    gain.gain.linearRampToValueAtTime(0.0001, time + dur);
+    osc.connect(gain).connect(this.musicGain);
+    osc.start(time);
+    osc.stop(time + dur + 0.05);
+  },
+
+  // Bass note (deeper, with sub-oscillator)
+  playBass(freq, time, dur, vol = 0.18) {
+    const osc1 = Audio.ctx.createOscillator();
+    const osc2 = Audio.ctx.createOscillator();
+    const gain = Audio.ctx.createGain();
+    const filter = Audio.ctx.createBiquadFilter();
+    osc1.type = 'sawtooth';
+    osc2.type = 'square';
+    osc1.frequency.value = freq;
+    osc2.frequency.value = freq * 0.5; // sub-octave
+    filter.type = 'lowpass';
+    filter.frequency.value = 600;
+    filter.Q.value = 2;
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(vol, time + 0.03);
+    gain.gain.linearRampToValueAtTime(vol * 0.5, time + dur * 0.5);
+    gain.gain.linearRampToValueAtTime(0.0001, time + dur);
+    osc1.connect(filter); osc2.connect(filter);
+    filter.connect(gain).connect(this.musicGain);
+    osc1.start(time); osc2.start(time);
+    osc1.stop(time + dur + 0.05);
+    osc2.stop(time + dur + 0.05);
+  },
+
+  // Soft pad (sustained chord background)
+  playPad(freqs, time, dur, vol = 0.06) {
+    for (const f of freqs) {
+      const osc = Audio.ctx.createOscillator();
+      const gain = Audio.ctx.createGain();
+      const filter = Audio.ctx.createBiquadFilter();
+      osc.type = 'sawtooth';
+      osc.frequency.value = f;
+      filter.type = 'lowpass';
+      filter.frequency.value = 1200;
+      gain.gain.setValueAtTime(0, time);
+      gain.gain.linearRampToValueAtTime(vol, time + 0.4);
+      gain.gain.linearRampToValueAtTime(vol * 0.7, time + dur * 0.6);
+      gain.gain.linearRampToValueAtTime(0.0001, time + dur);
+      osc.connect(filter).connect(gain).connect(this.musicGain);
+      osc.start(time);
+      osc.stop(time + dur + 0.05);
+    }
+  },
+
+  // Schedule one bar (4 beats) of music starting at time `t`
+  // Returns next bar time
+  scheduleMenuBar(t, barIdx) {
+    const N = this.notes;
+    const beat = 0.5;  // half-second beats — slow, ambient
+    // Chord progression: Am – F – C – G (classic, contemplative)
+    const chord = [
+      [N.A2, N.C4, N.E4],
+      [N.F2, N.A3, N.C4],
+      [N.C3, N.E4, N.G4],
+      [N.G2, N.D4, N.G4],
+    ][barIdx % 4];
+    // pad chord across whole bar
+    this.playPad(chord, t, beat * 4, 0.05);
+    // bass on beat 1 and 3
+    this.playBass(chord[0], t, beat * 1.8);
+    this.playBass(chord[0], t + beat * 2, beat * 1.8);
+    // gentle melody arpeggio
+    const arp = [chord[1], chord[2], chord[1], chord[2] * 1.2];
+    arp.forEach((f, i) => {
+      this.playNote(f, t + beat * i, beat * 0.9, 'sine', 0.08);
+    });
+    return t + beat * 4;
+  },
+
+  // Battle bar — driving, faster, more intense
+  scheduleBattleBar(t, barIdx) {
+    const N = this.notes;
+    const beat = 0.28;  // faster tempo
+    // Minor progression: Am – G – F – E (dramatic)
+    const chord = [
+      [N.A2, N.C4, N.E4, N.A4],
+      [N.G2, N.B3, N.D4, N.G4],
+      [N.F2, N.A3, N.C4, N.F4],
+      [N.E2, N.G3, N.B3, N.E4],
+    ][barIdx % 4];
+    // pad
+    this.playPad([chord[0], chord[1]], t, beat * 4, 0.045);
+    // driving bass — 8th notes
+    for (let i = 0; i < 8; i++) {
+      const v = i % 2 === 0 ? 0.18 : 0.10;
+      this.playBass(chord[0], t + beat * i * 0.5, beat * 0.45, v);
+    }
+    // arpeggio melody on top
+    const arpPattern = [chord[2], chord[3], chord[1], chord[3], chord[2], chord[3], chord[1], chord[2]];
+    arpPattern.forEach((f, i) => {
+      this.playNote(f, t + beat * i * 0.5, beat * 0.4, 'square', 0.07);
+    });
+    // occasional lead note on bar transitions
+    if (barIdx % 4 === 3) {
+      this.playNote(chord[3] * 2, t + beat * 3.5, beat * 0.6, 'triangle', 0.1);
+    }
+    return t + beat * 4;
+  },
+
+  start(track) {
+    if (!this.enabled) return;
+    if (this.current === track) return;
+    this.stop();
+    if (!this.setup()) return;
+    if (Audio.muted) return;
+
+    this.current = track;
+    const fn = track === 'battle' ? this.scheduleBattleBar.bind(this) : this.scheduleMenuBar.bind(this);
+
+    // Pre-schedule first bar at slight offset to let context warm up
+    let nextBarTime = Audio.ctx.currentTime + 0.1;
+    let barIdx = 0;
+    const lookAhead = () => {
+      if (this.current !== track) return; // track changed/stopped
+      // schedule bars 1.5s ahead
+      while (nextBarTime < Audio.ctx.currentTime + 1.5) {
+        nextBarTime = fn(nextBarTime, barIdx);
+        barIdx++;
+      }
+    };
+    lookAhead();
+    const interval = setInterval(lookAhead, 500);
+    this.timers.push(interval);
+  },
+
+  stop() {
+    this.current = null;
+    this.timers.forEach(t => clearInterval(t));
+    this.timers = [];
+  },
+
+  toggle() {
+    this.enabled = !this.enabled;
+    if (!this.enabled) this.stop();
+    return this.enabled;
+  },
+};
 
 /* ---------- PILOTS / SHIPS ---------- */
 const PILOTS = [
@@ -471,6 +882,12 @@ window.addEventListener('keyup',   e => keys[e.key.toLowerCase()] = false);
 function togglePause() {
   if (state !== STATE.PLAYING) return;
   paused = !paused;
+  Audio.pauseSound();
+  if (paused) {
+    Music.stop();
+  } else if (Music.enabled) {
+    Music.start('battle');
+  }
   const btn = document.getElementById('btn-pause');
   if (btn) btn.textContent = paused ? '▶' : '⏸';
 }
@@ -982,6 +1399,7 @@ function update() {
     enemiesLeftInWave = 4 + Math.floor(levelData.waves * 1.5) + waveIndex;
     spawnCountdown = 90;
     showLevelBanner(`ΚΥΜΑ ${waveIndex + 1}`);
+    Audio.waveStart();
   }
 
   // enemies move
@@ -1017,6 +1435,7 @@ function update() {
       if (Math.abs(b.x - e.x) < e.w/2 + 4 && Math.abs(b.y - e.y) < e.h/2 + 4) {
         e.hp -= b.dmg;
         spawnParticles(b.x, b.y, '#ffe600', 6, 3);
+        Audio.hitEnemy();
 
         // PLASMA: area-of-effect explosion damaging nearby enemies
         if (b.areaDmg) {
@@ -1026,6 +1445,7 @@ function update() {
             x: b.x, y: b.y, vx: 0, vy: 0, life: 24, max: 24,
             color: '#ffe600', size: 8, ring: true, ringRadius: 8,
           });
+          Audio.explosion(false);
           // splash damage
           for (const other of enemies) {
             if (other === e) continue;
@@ -1044,6 +1464,7 @@ function update() {
             x: e.x, y: e.y, vx: 0, vy: 0, life: 16, max: 16,
             color: '#ff8c00', size: 4, ring: true, ringRadius: 4,
           });
+          Audio.explosion(e.type === 'gunship');
           score += (e.type === 'gunship' ? 200 : e.type === 'dart' ? 100 : 50);
           enemies.splice(j, 1);
         }
@@ -1062,6 +1483,7 @@ function update() {
         player.hp -= 10;
         player.invuln = 40;
         spawnParticles(player.x, player.y, '#00f0ff', 12, 4);
+        Audio.hit();
         eBullets.splice(i, 1);
       }
     }
@@ -1071,6 +1493,8 @@ function update() {
         player.hp -= 25;
         player.invuln = 50;
         spawnParticles(player.x, player.y, '#ff2b3e', 20, 5);
+        Audio.hit();
+        Audio.explosion(false);
         e.hp = 0;
         spawnParticles(e.x, e.y, '#ff8c00', 16, 4);
         enemies.splice(enemies.indexOf(e), 1);
@@ -1089,6 +1513,7 @@ function update() {
 
 function fireBullet() {
   const bx = player.x + 24, by = player.y;
+  Audio.shoot(player.bullet);
 
   if (player.bullet === 'single') {
     // ΜΟΝΗ — charged laser bolt with glow trail
@@ -1406,6 +1831,7 @@ function draw() {
 /* ---------- WIN / LOSE ---------- */
 function onLevelWin() {
   state = STATE.WIN;
+  Audio.victory();
   // update progress
   let unlockText = '';
   if (levelData.num >= save.maxLevel) {
@@ -1417,6 +1843,7 @@ function onLevelWin() {
     );
     if (newlyUnlocked.length) {
       unlockText = `>> ΝΕΟΣ ΠΙΛΟΤΟΣ ΞΕΚΛΕΙΔΩΘΗΚΕ: ${newlyUnlocked.map(p => p.name).join(', ').toUpperCase()} <<`;
+      setTimeout(() => Audio.unlock(), 600);
     }
   }
   if (score > save.highScore) save.highScore = score;
@@ -1430,6 +1857,8 @@ function onLevelWin() {
 
 function onLevelLose() {
   state = STATE.LOSE;
+  Audio.explosion(true);
+  setTimeout(() => Audio.defeat(), 200);
   showScreen('screen-lose');
 }
 
@@ -1462,6 +1891,9 @@ function showScreen(id) {
     if (id) pauseBtn.classList.add('hidden');
     else pauseBtn.classList.remove('hidden');
   }
+  // music: menu music when on screens, battle when playing
+  if (id) Music.start('menu');
+  else Music.start('battle');
 }
 
 function weaponLabel(b) {
@@ -1527,6 +1959,47 @@ document.getElementById('btn-reset').onclick = () => {
     alert('Η πρόοδος επαναφέρθηκε.');
   }
 };
+
+// Audio: initialize and play UI clicks on first interaction (browsers require user gesture)
+function initAudioOnce() {
+  Audio.init();
+  Audio.resume();
+  // Start music too — only on first interaction (browser autoplay policy)
+  if (Music.enabled && !Music.current) {
+    // Start menu music if we're on a screen, battle if playing
+    const onScreen = document.querySelectorAll('.screen:not(.hidden)').length > 0;
+    Music.start(onScreen ? 'menu' : 'battle');
+  }
+}
+document.addEventListener('click', (e) => {
+  initAudioOnce();
+  // play click sound for any button click (except mute & pause which have their own)
+  const btn = e.target.closest('button');
+  if (btn && btn.id !== 'btn-mute' && btn.id !== 'btn-pause' && btn.id !== 'btn-music') Audio.click();
+}, true);
+document.addEventListener('keydown', initAudioOnce, { once: true });
+
+// Mute toggle (silences ALL audio including music)
+document.getElementById('btn-mute').addEventListener('click', () => {
+  Audio.setMuted(!Audio.muted);
+  document.getElementById('btn-mute').textContent = Audio.muted ? '🔇' : '🔊';
+});
+
+// Music toggle (just toggles music, leaves SFX alone)
+document.getElementById('btn-music').addEventListener('click', () => {
+  const enabled = Music.toggle();
+  const btn = document.getElementById('btn-music');
+  if (enabled) {
+    btn.classList.remove('off');
+    btn.textContent = '🎵';
+    // restart appropriate track
+    const onScreen = document.querySelectorAll('.screen:not(.hidden)').length > 0;
+    Music.start(onScreen ? 'menu' : 'battle');
+  } else {
+    btn.classList.add('off');
+    btn.textContent = '🎵';
+  }
+});
 
 /* ---------- BOOT ---------- */
 stars = makeStars();
