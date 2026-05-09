@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ΑΣΤΡΟΜΑΧΗΤΗΣ: ΕΞΕΓΕΡΣΗ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --neon-cyan: #00f0ff;
+    --neon-magenta: #ff2bd6;
+    --neon-yellow: #ffe600;
+    --neon-green: #39ff14;
+    --neon-red: #ff2b3e;
+    --bg-deep: #04020f;
+    --bg-mid: #0a0820;
+    --rebel-orange: #ff8c00;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg-deep);
+    color: var(--neon-cyan);
+    font-family: 'VT323', monospace;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse at center, #0a0830 0%, #04020f 70%),
+      var(--bg-deep);
+  }
+
+  /* CRT scanlines & vignette over everything */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0px,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 100;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 200px rgba(0,0,0,0.9);
+    z-index: 99;
+  }
+
+  #game-wrap {
+    position: relative;
+    width: min(96vw, 1100px);
+    aspect-ratio: 16 / 9;
+    border: 2px solid var(--neon-cyan);
+    box-shadow:
+      0 0 40px rgba(0, 240, 255, 0.4),
+      inset 0 0 60px rgba(0, 240, 255, 0.08);
+    background: var(--bg-deep);
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    z-index: 10;
+  }
+
+  .hud-corner {
+    position: absolute;
+    padding: 12px 16px;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-shadow: 0 0 8px currentColor;
+  }
+
+  #hud-tl { top: 0; left: 0; color: var(--neon-cyan); }
+  #hud-tr { top: 0; right: 0; color: var(--neon-yellow); text-align: right; }
+  #hud-bl { bottom: 0; left: 0; color: var(--rebel-orange); }
+  #hud-br { bottom: 0; right: 0; color: var(--neon-magenta); text-align: right; }
+
+  .hud-label { font-size: 10px; opacity: 0.6; display: block; margin-bottom: 2px; }
+  .hud-value { font-size: 18px; }
+
+  .hp-bar {
+    width: 140px;
+    height: 8px;
+    border: 1px solid var(--rebel-orange);
+    margin-top: 4px;
+    position: relative;
+  }
+  .hp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-red), var(--rebel-orange), var(--neon-yellow));
+    transition: width 0.2s;
+    box-shadow: 0 0 10px var(--rebel-orange);
+  }
+
+  /* Screens (menu / level select / game over) */
+  .screen {
+    position: absolute;
+    inset: 0;
+    background: rgba(4, 2, 15, 0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    padding: 30px;
+    text-align: center;
+  }
+
+  .screen.hidden { display: none; }
+
+  .title {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: clamp(28px, 5vw, 56px);
+    letter-spacing: 6px;
+    color: var(--neon-yellow);
+    text-shadow:
+      0 0 10px var(--neon-yellow),
+      0 0 20px var(--neon-yellow),
+      3px 3px 0 var(--neon-magenta),
+      -3px -3px 0 var(--neon-cyan);
+    margin-bottom: 8px;
+    animation: title-flicker 4s infinite;
+  }
+
+  @keyframes title-flicker {
+    0%, 92%, 100% { opacity: 1; }
+    93% { opacity: 0.4; }
+    94% { opacity: 1; }
+    96% { opacity: 0.7; }
+  }
+
+  .subtitle {
+    font-family: 'Orbitron', monospace;
+    color: var(--neon-cyan);
+    letter-spacing: 4px;
+    font-size: 14px;
+    margin-bottom: 30px;
+    opacity: 0.8;
+  }
+
+  .crawl {
+    font-size: 18px;
+    color: var(--rebel-orange);
+    max-width: 600px;
+    line-height: 1.5;
+    margin-bottom: 24px;
+    text-shadow: 0 0 6px var(--rebel-orange);
+  }
+
+  button {
+    background: transparent;
+    color: var(--neon-cyan);
+    border: 2px solid var(--neon-cyan);
+    padding: 10px 28px;
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    letter-spacing: 3px;
+    font-size: 14px;
+    cursor: pointer;
+    margin: 6px;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    text-shadow: 0 0 6px currentColor;
+  }
+  button:hover, button:focus {
+    background: var(--neon-cyan);
+    color: var(--bg-deep);
+    box-shadow: 0 0 20px var(--neon-cyan);
+    outline: none;
+  }
+  button.locked {
+    color: #555;
+    border-color: #333;
+    cursor: not-allowed;
+    text-shadow: none;
+  }
+  button.locked:hover { background: transparent; color: #555; box-shadow: none; }
+
+  .pilot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    width: 100%;
+    max-width: 900px;
+    margin-top: 16px;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 4px;
+  }
+
+  .pilot-card {
+    border: 1px solid var(--neon-cyan);
+    padding: 12px;
+    background: rgba(0, 240, 255, 0.04);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+  }
+  .pilot-card:hover { background: rgba(0, 240, 255, 0.15); transform: translateY(-2px); }
+  .pilot-card.selected { background: var(--neon-yellow); color: var(--bg-deep); border-color: var(--neon-yellow); box-shadow: 0 0 20px var(--neon-yellow); }
+  .pilot-card.locked { opacity: 0.4; cursor: not-allowed; border-color: #444; }
+  .pilot-card.locked:hover { transform: none; background: rgba(0,0,0,0.2); }
+
+  .pilot-name { font-family: 'Orbitron', monospace; font-weight: 700; font-size: 14px; letter-spacing: 1px; margin-bottom: 4px; }
+  .pilot-meta { font-size: 14px; line-height: 1.3; opacity: 0.85; }
+  .stat-row { display: flex; justify-content: space-between; font-size: 12px; margin-top: 2px; }
+  .stat-bar { display: inline-block; width: 60px; height: 6px; background: #222; vertical-align: middle; }
+  .stat-bar-fill { height: 100%; background: var(--neon-green); }
+
+  .level-info {
+    color: var(--neon-magenta);
+    font-size: 16px;
+    margin: 10px 0 20px;
+    letter-spacing: 2px;
+  }
+
+  .controls-hint {
+    position: absolute;
+    bottom: 12px;
+    font-size: 14px;
+    opacity: 0.5;
+    letter-spacing: 2px;
+  }
+
+  /* Pause button — visible during play */
+  .pause-btn {
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0;
+    border: 2px solid var(--neon-cyan);
+    background: rgba(4, 2, 15, 0.7);
+    color: var(--neon-cyan);
+    font-size: 22px;
+    font-family: sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+    transition: all 0.15s;
+    z-index: 11;
+  }
+  .pause-btn:hover {
+    background: var(--neon-cyan);
+    color: var(--bg-deep);
+    box-shadow: 0 0 25px var(--neon-cyan);
+  }
+  .pause-btn.hidden { display: none; }
+
+  /* Big level banner */
+  #level-banner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 48px;
+    color: var(--neon-yellow);
+    letter-spacing: 8px;
+    text-shadow: 0 0 20px var(--neon-yellow), 0 0 40px var(--rebel-orange);
+    z-index: 15;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  #level-banner.show { animation: banner-pop 2.5s forwards; }
+  @keyframes banner-pop {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+    30% { transform: translate(-50%, -50%) scale(1); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <canvas id="game" width="1280" height="720"></canvas>
+
+  <div id="hud">
+    <div class="hud-corner" id="hud-tl">
+      <span class="hud-label">ΠΙΛΟΤΟΣ</span>
+      <span class="hud-value" id="hud-pilot">—</span>
+    </div>
+    <div class="hud-corner" id="hud-tr">
+      <span class="hud-label">ΣΚΟΡ</span>
+      <span class="hud-value" id="hud-score">0</span>
+    </div>
+    <div class="hud-corner" id="hud-bl">
+      <span class="hud-label">ΑΚΕΡΑΙΟΤΗΤΑ ΚΥΤΟΥΣ</span>
+      <div class="hp-bar"><div class="hp-fill" id="hud-hp" style="width:100%"></div></div>
+    </div>
+    <div class="hud-corner" id="hud-br">
+      <span class="hud-label">ΤΟΜΕΑΣ</span>
+      <span class="hud-value" id="hud-level">—</span>
+    </div>
+    <button id="btn-pause" class="pause-btn" title="Παύση (ENTER)">⏸</button>
+  </div>
+
+  <div id="level-banner"></div>
+
+  <!-- TITLE SCREEN -->
+  <div class="screen" id="screen-title">
+    <div class="title">ΑΣΤΡΟΜΑΧΗΤΗΣ</div>
+    <div class="subtitle">— ΕΞΕΓΕΡΣΗ —</div>
+    <p class="crawl">Η Αυτοκρατορία Ντομίνιον έχει συντρίψει κάθε αντίσταση εκτός από μία: ένα κουρελιασμένο σμήνος πιλότων που πετούν με σκάφη διασωσμένα από τις παρυφές του γνωστού διαστήματος. Είσαι ο νεότερος νεοσύλλεκτός τους.</p>
+    <button id="btn-start">ΕΚΚΙΝΗΣΗ</button>
+    <button id="btn-reset">ΕΠΑΝΑΦΟΡΑ ΠΡΟΟΔΟΥ</button>
+    <div class="controls-hint">ΒΕΛΗ / WASD — ΚΙΝΗΣΗ  ·  SPACE — ΠΥΡ  ·  ENTER / ⏸ — ΠΑΥΣΗ</div>
+  </div>
+
+  <!-- HANGAR / PILOT SELECT -->
+  <div class="screen hidden" id="screen-hangar">
+    <div class="title" style="font-size:36px">ΥΠΟΣΤΕΓΟ</div>
+    <div class="level-info" id="hangar-level-info">ΤΟΜΕΑΣ 1 — ΔΟΚΙΜΑΣΤΙΚΗ ΠΤΗΣΗ</div>
+    <div class="pilot-grid" id="pilot-grid"></div>
+    <div style="margin-top:16px">
+      <button id="btn-launch">ΑΠΟΓΕΙΩΣΗ</button>
+      <button id="btn-back-title">ΠΙΣΩ</button>
+    </div>
+  </div>
+
+  <!-- VICTORY -->
+  <div class="screen hidden" id="screen-win">
+    <div class="title" style="color:var(--neon-green); text-shadow: 0 0 10px var(--neon-green), 0 0 20px var(--neon-green);">ΤΟΜΕΑΣ ΚΑΘΑΡΟΣ</div>
+    <p class="crawl" id="win-msg">Η Αυτοκρατορία υποχωρεί. Η Εξέγερση ζει για άλλη μια μέρα.</p>
+    <div id="unlock-msg" style="color:var(--neon-yellow); font-size:20px; margin:10px 0; min-height:30px;"></div>
+    <div>
+      <button id="btn-next">ΕΠΟΜΕΝΟΣ ΤΟΜΕΑΣ</button>
+      <button id="btn-hangar">ΥΠΟΣΤΕΓΟ</button>
+    </div>
+  </div>
+
+  <!-- DEFEAT -->
+  <div class="screen hidden" id="screen-lose">
+    <div class="title" style="color:var(--neon-red); text-shadow: 0 0 10px var(--neon-red), 0 0 20px var(--neon-red);">ΣΚΑΦΟΣ ΧΑΘΗΚΕ</div>
+    <p class="crawl">Το σκάφος σου έγινε συντρίμμια στο κενό. Η Εξέγερση αντέχει — προσπάθησε ξανά.</p>
+    <div>
+      <button id="btn-retry">ΞΑΝΑΠΡΟΣΠΑΘΗΣΕ</button>
+      <button id="btn-hangar2">ΥΠΟΣΤΕΓΟ</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   STARFIGHTER: REBELLION  —  side-scrolling shoot-em-up
+   ============================================================ */
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+/* ---------- PILOTS / SHIPS ---------- */
+const PILOTS = [
+  { id: 'cadet',    name: 'Δόκιμος Ρεν',     ship: 'Σπουργίτι-Mk1', unlockLevel: 0,
+    hull: 100, speed: 5,   fireRate: 240, bullet: 'single', color: '#00f0ff', accent: '#ffe600',
+    blurb: 'Φρέσκος από την ακαδημία. Σταθερό μαχητικό όλων των χρήσεων.' },
+  { id: 'ace',      name: 'Βεξ "Άσσος" Κόρο', ship: 'Ξυραφόπτερο',   unlockLevel: 2,
+    hull: 70,  speed: 7.5, fireRate: 160, bullet: 'twin',   color: '#ff2bd6', accent: '#00f0ff',
+    blurb: 'Γρήγορο, εύθραυστο, θανατηφόρο. Δίδυμα παλμικά κανόνια.' },
+  { id: 'gunner',   name: 'Μπριξ Χάλοραν',   ship: 'Σιδερόδερμα',    unlockLevel: 4,
+    hull: 160, speed: 3.5, fireRate: 520, bullet: 'spread', color: '#ff8c00', accent: '#ffe600',
+    blurb: 'Βαρύς πυροβολητής. Αργός, ανθεκτικός, πενταπλή ριπή.' },
+  { id: 'scout',    name: 'Μίρα Ταλ',        ship: 'Φάντασμα',       unlockLevel: 6,
+    hull: 80,  speed: 6.5, fireRate: 280, bullet: 'piercing', color: '#39ff14', accent: '#00f0ff',
+    blurb: 'Ανιχνευτής αορατότητας. Διατρητικά πυρά διασχίζουν τις γραμμές.' },
+  { id: 'leader',   name: 'Διοικ. Τζαξ Βορ', ship: 'Ουρανοθραύστης', unlockLevel: 8,
+    hull: 130, speed: 6,   fireRate: 220, bullet: 'plasma', color: '#ffe600', accent: '#ff2b3e',
+    blurb: 'Αρχηγός σμήνους. Ο καλύτερος της κατηγορίας. Βαριές εκρηκτικές ριπές πλάσματος.' },
+  { id: 'phoenix',  name: 'Νύα "Φοίνικας" Ρα', ship: 'Φλεγόμενος Φοίνικας', unlockLevel: 11,
+    hull: 110, speed: 7,   fireRate: 200, bullet: 'flamewave', color: '#ff4500', accent: '#ffe600',
+    blurb: 'Πυρομανής άσσος. Φλόγινα κύματα που καίνε ό,τι αγγίζουν.' },
+  { id: 'voidlord', name: 'Άρχοντας Νύχτας Καέλ', ship: 'Σκοτεινό Άστρο', unlockLevel: 14,
+    hull: 150, speed: 6.5, fireRate: 240, bullet: 'voidbeam', color: '#9d4edd', accent: '#ff00ff',
+    blurb: 'Θρυλικός εξεγερσιακός. Ακτίνα κενού που εξαφανίζει εχθρούς.' },
+];
+
+/* ---------- LEVELS ---------- */
+const LEVELS = [
+  { num: 1,  name: 'ΔΟΚΙΜΑΣΤΙΚΗ ΠΤΗΣΗ',     waves: 3, enemyHp: 1, enemySpeed: 2.0, spawnRate: 90, types: ['drone'] },
+  { num: 2,  name: 'ΠΕΡΙΠΟΛΙΑ ΕΞΩ ΤΡΟΧΙΑΣ', waves: 4, enemyHp: 1, enemySpeed: 2.4, spawnRate: 80, types: ['drone','drone','dart'] },
+  { num: 3,  name: 'ΕΝΕΔΡΑ ΣΤΟ ΝΕΦΕΛΩΜΑ',   waves: 5, enemyHp: 2, enemySpeed: 2.6, spawnRate: 70, types: ['drone','dart'] },
+  { num: 4,  name: 'ΑΥΤΟΚΡΑΤΟΡΙΚΟ ΚΟΝΒΟΪ',  waves: 5, enemyHp: 2, enemySpeed: 2.8, spawnRate: 65, types: ['dart','gunship'] },
+  { num: 5,  name: 'ΔΙΑΣΠΑΣΗ ΑΠΟΚΛΕΙΣΜΟΥ',  waves: 6, enemyHp: 3, enemySpeed: 3.0, spawnRate: 60, types: ['drone','dart','gunship'] },
+  { num: 6,  name: 'ΠΕΔΙΟ ΑΣΤΕΡΟΕΙΔΩΝ',     waves: 6, enemyHp: 3, enemySpeed: 3.2, spawnRate: 55, types: ['dart','gunship','dart'] },
+  { num: 7,  name: 'ΦΟΒΟΥΝΑΥΣ',             waves: 7, enemyHp: 4, enemySpeed: 3.4, spawnRate: 50, types: ['gunship','dart','drone'] },
+  { num: 8,  name: 'ΠΛΑΝΗΤΗΣ ΦΩΤΙΑΣ',       waves: 7, enemyHp: 4, enemySpeed: 3.6, spawnRate: 48, types: ['dart','gunship','dart'] },
+  { num: 9,  name: 'ΠΑΓΩΜΕΝΟΣ ΓΑΛΑΞΙΑΣ',    waves: 8, enemyHp: 5, enemySpeed: 3.6, spawnRate: 45, types: ['drone','gunship','dart'] },
+  { num: 10, name: 'ΑΥΤΟΚΡΑΤΟΡΙΚΟΣ ΠΥΡΗΝΑΣ', waves: 8, enemyHp: 5, enemySpeed: 3.8, spawnRate: 42, types: ['gunship','dart','gunship'] },
+  { num: 11, name: 'ΜΑΥΡΗ ΤΡΥΠΑ',           waves: 9, enemyHp: 6, enemySpeed: 4.0, spawnRate: 40, types: ['dart','gunship','dart','drone'] },
+  { num: 12, name: 'ΣΤΑΘΜΟΣ ΘΑΝΑΤΟΥ',       waves: 9, enemyHp: 6, enemySpeed: 4.2, spawnRate: 38, types: ['gunship','dart','gunship','dart'] },
+  { num: 13, name: 'ΚΟΣΜΙΚΗ ΚΑΤΑΙΓΙΔΑ',     waves: 10,enemyHp: 7, enemySpeed: 4.4, spawnRate: 35, types: ['dart','gunship','drone','gunship'] },
+  { num: 14, name: 'ΘΡΟΝΟΣ ΑΥΤΟΚΡΑΤΟΡΑ',    waves: 11,enemyHp: 8, enemySpeed: 4.6, spawnRate: 33, types: ['gunship','dart','gunship'] },
+  { num: 15, name: 'ΤΕΛΙΚΗ ΕΠΙΘΕΣΗ',        waves: 12,enemyHp: 9, enemySpeed: 5.0, spawnRate: 30, types: ['gunship','dart','gunship','drone'] },
+];
+
+/* ---------- PROGRESS (localStorage) ---------- */
+const SAVE_KEY = 'starfighter_save_v1';
+function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
+    return {
+      maxLevel: s.maxLevel || 1,
+      currentLevel: s.currentLevel || 1,
+      selectedPilot: s.selectedPilot || 'cadet',
+      highScore: s.highScore || 0,
+    };
+  } catch(e) {
+    return { maxLevel: 1, currentLevel: 1, selectedPilot: 'cadet', highScore: 0 };
+  }
+}
+function saveSave() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e) {}
+}
+let save = loadSave();
+
+/* ---------- GAME STATE ---------- */
+const STATE = { TITLE:0, HANGAR:1, PLAYING:2, WIN:3, LOSE:4, PAUSED:5 };
+let state = STATE.TITLE;
+let player, bullets, enemies, eBullets, particles, stars, score, levelData,
+    waveIndex, waveTimer, enemiesLeftInWave, spawnCountdown, frame, paused;
+
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === ' ') e.preventDefault();
+  if (e.key === 'Enter' && state === STATE.PLAYING) togglePause();
+});
+window.addEventListener('keyup',   e => keys[e.key.toLowerCase()] = false);
+
+function togglePause() {
+  if (state !== STATE.PLAYING) return;
+  paused = !paused;
+  const btn = document.getElementById('btn-pause');
+  if (btn) btn.textContent = paused ? '▶' : '⏸';
+}
+
+document.getElementById('btn-pause').addEventListener('click', togglePause);
+
+/* ---------- ENTITY HELPERS ---------- */
+function makeStars() {
+  const arr = [];
+  for (let i = 0; i < 140; i++) {
+    arr.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      z: Math.random() * 2 + 0.3, // depth ~ speed
+      size: Math.random() * 1.8 + 0.4,
+    });
+  }
+  return arr;
+}
+
+function drawStars() {
+  for (const s of stars) {
+    s.x -= s.z * 1.4;
+    if (s.x < 0) { s.x = W; s.y = Math.random() * H; }
+    ctx.fillStyle = `rgba(${180 + s.z*30}, ${200 + s.z*20}, 255, ${0.3 + s.z*0.3})`;
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  }
+}
+
+function spawnParticles(x, y, color, n = 14, spread = 4) {
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * spread * 2,
+      vy: (Math.random() - 0.5) * spread * 2,
+      life: 30 + Math.random() * 20,
+      max: 50,
+      color,
+      size: Math.random() * 3 + 1,
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    if (p.ring) {
+      p.ringRadius += 4;
+      p.life--;
+      if (p.life <= 0) particles.splice(i, 1);
+      continue;
+    }
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.94; p.vy *= 0.94;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life / p.max;
+    if (p.ring) {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.ringRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- SHIP DRAWING (vector / canvas) ---------- */
+function drawPlayerShip(p) {
+  const x = p.x, y = p.y;
+  const c = p.color, a = p.accent;
+  ctx.save();
+  ctx.translate(x, y);
+
+  // ENGINE FLAMES — animated, multi-layer
+  const flameLen = 14 + Math.sin(frame * 0.4) * 4;
+  ctx.shadowColor = a; ctx.shadowBlur = 20;
+  // outer flame
+  ctx.fillStyle = a;
+  ctx.beginPath();
+  ctx.moveTo(-22, -6); ctx.lineTo(-22 - flameLen, 0); ctx.lineTo(-22, 6);
+  ctx.closePath(); ctx.fill();
+  // inner hot flame
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(-22, -3); ctx.lineTo(-22 - flameLen * 0.6, 0); ctx.lineTo(-22, 3);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  if (p.shipKey === 'Ξυραφόπτερο') {
+    // RAZORWING — sleek triangular interceptor with swept wings
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    // main hull
+    ctx.beginPath();
+    ctx.moveTo(32, 0); ctx.lineTo(-8, -8); ctx.lineTo(-22, -6);
+    ctx.lineTo(-22, 6); ctx.lineTo(-8, 8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // swept wings
+    ctx.fillStyle = a;
+    ctx.beginPath();
+    ctx.moveTo(0, -8); ctx.lineTo(-16, -18); ctx.lineTo(-8, -16); ctx.lineTo(4, -8);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 8); ctx.lineTo(-16, 18); ctx.lineTo(-8, 16); ctx.lineTo(4, 8);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // cockpit
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = a; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(8, 0, 4, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+  } else if (p.shipKey === 'Σιδερόδερμα') {
+    // IRONHIDE — heavy gunship with armor plates
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    // main fuselage
+    ctx.beginPath();
+    ctx.moveTo(26, 0); ctx.lineTo(16, -16); ctx.lineTo(-22, -18);
+    ctx.lineTo(-26, -4); ctx.lineTo(-26, 4); ctx.lineTo(-22, 18);
+    ctx.lineTo(16, 16); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // armor plates
+    ctx.fillStyle = a;
+    ctx.fillRect(-10, -14, 20, 4);
+    ctx.fillRect(-10,  10, 20, 4);
+    // wing cannons
+    ctx.fillStyle = '#666';
+    ctx.fillRect(8, -22, 14, 4);
+    ctx.fillRect(8,  18, 14, 4);
+    // cockpit dome
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = a; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(4, 0, 5, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+  } else if (p.shipKey === 'Φάντασμα') {
+    // GHOSTFIN — angular stealth scout with translucent fins
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(34, 0); ctx.lineTo(0, -10); ctx.lineTo(-22, -4);
+    ctx.lineTo(-26, 0); ctx.lineTo(-22, 4); ctx.lineTo(0, 10); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // translucent stealth fins
+    ctx.fillStyle = a + '88';
+    ctx.beginPath();
+    ctx.moveTo(-4, -6); ctx.lineTo(-20, -22); ctx.lineTo(-12, -6); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-4, 6); ctx.lineTo(-20, 22); ctx.lineTo(-12, 6); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // glowing core
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = a; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(6, 0, 3, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+  } else if (p.shipKey === 'Ουρανοθραύστης') {
+    // SKYBREAKER — commander flagship, twin-tail, four wing tips
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    // main hull
+    ctx.beginPath();
+    ctx.moveTo(32, 0); ctx.lineTo(10, -10); ctx.lineTo(-14, -16);
+    ctx.lineTo(-22, -10); ctx.lineTo(-22, 10); ctx.lineTo(-14, 16);
+    ctx.lineTo(10, 10); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // four wing tips with glowing thrusters
+    ctx.fillStyle = a;
+    ctx.fillRect(-22, -22, 6, 8);
+    ctx.fillRect(-22,  14, 6, 8);
+    ctx.fillRect(-12, -26, 4, 6);
+    ctx.fillRect(-12,  20, 4, 6);
+    // glow on wing tips
+    ctx.shadowColor = a; ctx.shadowBlur = 10;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-21, -20, 3, 4);
+    ctx.fillRect(-21,  16, 3, 4);
+    ctx.shadowBlur = 0;
+    // command cockpit
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffe600'; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(8, 0, 5, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+  } else if (p.shipKey === 'Φλεγόμενος Φοίνικας') {
+    // PHOENIX — fiery wings, animated flame trail
+    const wingFlap = Math.sin(frame * 0.2) * 3;
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#ffe600';
+    ctx.lineWidth = 2;
+    // main body
+    ctx.beginPath();
+    ctx.moveTo(28, 0); ctx.lineTo(8, -8); ctx.lineTo(-18, -8);
+    ctx.lineTo(-22, 0); ctx.lineTo(-18, 8); ctx.lineTo(8, 8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // phoenix wings (animated)
+    ctx.fillStyle = '#ffe600';
+    ctx.shadowColor = '#ff4500'; ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.moveTo(4, -6); ctx.lineTo(-8, -22 - wingFlap); ctx.lineTo(-20, -18 - wingFlap);
+    ctx.lineTo(-12, -10); ctx.lineTo(-4, -8); ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(4, 6); ctx.lineTo(-8, 22 + wingFlap); ctx.lineTo(-20, 18 + wingFlap);
+    ctx.lineTo(-12, 10); ctx.lineTo(-4, 8); ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // fire crest
+    ctx.fillStyle = '#ff4500';
+    ctx.fillRect(-4, -3, 14, 1);
+    ctx.fillRect(-4,  2, 14, 1);
+    // cockpit
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffe600'; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(10, 0, 4, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+  } else if (p.shipKey === 'Σκοτεινό Άστρο') {
+    // VOID LORD — dark angular ship with purple energy aura
+    // aura
+    ctx.shadowColor = '#9d4edd'; ctx.shadowBlur = 25;
+    ctx.fillStyle = 'rgba(157, 78, 221, 0.3)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 28, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    // hull (dark)
+    ctx.fillStyle = '#2a0a3a';
+    ctx.strokeStyle = '#ff00ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(34, 0); ctx.lineTo(14, -6); ctx.lineTo(0, -14);
+    ctx.lineTo(-20, -16); ctx.lineTo(-26, -4); ctx.lineTo(-26, 4);
+    ctx.lineTo(-20, 16); ctx.lineTo(0, 14); ctx.lineTo(14, 6); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // glowing energy lines
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = c; ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(20, 0); ctx.lineTo(-20, 0);
+    ctx.moveTo(0, -10); ctx.lineTo(0, 10);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // dark wings
+    ctx.fillStyle = '#1a0525';
+    ctx.beginPath();
+    ctx.moveTo(-8, -10); ctx.lineTo(-22, -22); ctx.lineTo(-26, -16); ctx.lineTo(-14, -8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-8, 10); ctx.lineTo(-22, 22); ctx.lineTo(-26, 16); ctx.lineTo(-14, 8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // glowing eye
+    ctx.fillStyle = c;
+    ctx.shadowColor = c; ctx.shadowBlur = 15;
+    ctx.beginPath(); ctx.arc(10, 0, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(11, 0, 1.5, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+  } else {
+    // SPARROW MK1 — clean starter fighter
+    ctx.fillStyle = c;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(28, 0); ctx.lineTo(0, -10); ctx.lineTo(-20, -8);
+    ctx.lineTo(-22, 0); ctx.lineTo(-20, 8); ctx.lineTo(0, 10); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // wings
+    ctx.fillStyle = a;
+    ctx.beginPath();
+    ctx.moveTo(-4, -8); ctx.lineTo(-14, -16); ctx.lineTo(-18, -10); ctx.lineTo(-10, -8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-4, 8); ctx.lineTo(-14, 16); ctx.lineTo(-18, 10); ctx.lineTo(-10, 8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // cockpit
+    ctx.fillStyle = a;
+    ctx.shadowColor = a; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(6, 0, 4, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    // accent stripes
+    ctx.strokeStyle = a;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-16, -4); ctx.lineTo(-2, -4);
+    ctx.moveTo(-16,  4); ctx.lineTo(-2,  4);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawEnemyShip(e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.scale(-1, 1); // face left
+  if (e.type === 'drone') {
+    ctx.fillStyle = '#ff2b3e';
+    ctx.strokeStyle = '#ffaaaa';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(20, 0); ctx.lineTo(-10, -10); ctx.lineTo(-16, 0);
+    ctx.lineTo(-10, 10); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ffe600';
+    ctx.fillRect(-2, -2, 4, 4);
+  } else if (e.type === 'dart') {
+    ctx.fillStyle = '#c0c0d0';
+    ctx.strokeStyle = '#ff2b3e';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(24, 0); ctx.lineTo(0, -8); ctx.lineTo(-14, -10);
+    ctx.lineTo(-18, 0); ctx.lineTo(-14, 10); ctx.lineTo(0, 8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ff2b3e';
+    ctx.fillRect(-4, -2, 4, 4);
+  } else { // gunship
+    ctx.fillStyle = '#3a3a55';
+    ctx.strokeStyle = '#ff2bd6';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(28, 0); ctx.lineTo(10, -16); ctx.lineTo(-20, -18);
+    ctx.lineTo(-26, -6); ctx.lineTo(-26, 6); ctx.lineTo(-20, 18);
+    ctx.lineTo(10, 16); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#ff2bd6';
+    ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI*2); ctx.fill();
+    // wing guns
+    ctx.fillStyle = '#ffe600';
+    ctx.fillRect(-22, -14, 4, 3);
+    ctx.fillRect(-22,  11, 4, 3);
+  }
+  ctx.restore();
+}
+
+/* ---------- GAME FLOW ---------- */
+function startLevel(levelNum) {
+  levelData = LEVELS[levelNum - 1];
+  const pilot = PILOTS.find(p => p.id === save.selectedPilot) || PILOTS[0];
+
+  player = {
+    x: 120, y: H/2,
+    w: 50, h: 26,
+    color: pilot.color,
+    accent: pilot.accent,
+    shipKey: pilot.ship,
+    speed: pilot.speed,
+    fireRate: pilot.fireRate,
+    bullet: pilot.bullet,
+    hp: pilot.hull,
+    maxHp: pilot.hull,
+    lastShot: 0,
+    invuln: 0,
+    name: pilot.name,
+  };
+
+  bullets = []; enemies = []; eBullets = []; particles = []; stars = makeStars();
+  score = 0;
+  waveIndex = 0;
+  enemiesLeftInWave = 4 + Math.floor(levelData.waves * 1.5);
+  waveTimer = 0;
+  spawnCountdown = 60;
+  frame = 0;
+  paused = false;
+
+  showLevelBanner(`ΤΟΜΕΑΣ ${levelData.num} :: ${levelData.name}`);
+  setHUD();
+  state = STATE.PLAYING;
+  const btn = document.getElementById('btn-pause');
+  if (btn) btn.textContent = '⏸';
+}
+
+function showLevelBanner(text) {
+  const b = document.getElementById('level-banner');
+  b.textContent = text;
+  b.classList.remove('show');
+  void b.offsetWidth;
+  b.classList.add('show');
+}
+
+function setHUD() {
+  document.getElementById('hud-pilot').textContent = player ? player.name : '—';
+  document.getElementById('hud-score').textContent = score;
+  document.getElementById('hud-level').textContent = levelData ? levelData.num : '—';
+  if (player) {
+    const pct = Math.max(0, player.hp / player.maxHp * 100);
+    document.getElementById('hud-hp').style.width = pct + '%';
+  }
+}
+
+/* ---------- ENEMY SPAWN ---------- */
+function spawnEnemy() {
+  if (enemiesLeftInWave <= 0) return;
+  const types = levelData.types;
+  const type = types[Math.floor(Math.random() * types.length)];
+
+  let hp = levelData.enemyHp, speed = levelData.enemySpeed, w = 32, h = 24, fireChance = 0.005;
+  if (type === 'dart')   { hp += 1; speed += 1.2; fireChance = 0.012; }
+  if (type === 'gunship'){ hp += 3; speed -= 0.8; w = 50; h = 36; fireChance = 0.02; }
+
+  enemies.push({
+    type, hp, maxHp: hp, speed,
+    x: W + 30,
+    y: 60 + Math.random() * (H - 120),
+    w, h,
+    sineOffset: Math.random() * Math.PI * 2,
+    sineAmp: 30 + Math.random() * 40,
+    fireChance,
+  });
+  enemiesLeftInWave--;
+}
+
+/* ---------- UPDATE ---------- */
+function update() {
+  frame++;
+  if (paused) return;
+
+  // input
+  let dx = 0, dy = 0;
+  if (keys['arrowleft']  || keys['a']) dx = -1;
+  if (keys['arrowright'] || keys['d']) dx =  1;
+  if (keys['arrowup']    || keys['w']) dy = -1;
+  if (keys['arrowdown']  || keys['s']) dy =  1;
+  if (dx && dy) { dx *= 0.707; dy *= 0.707; }
+  player.x = Math.max(20, Math.min(W - 20, player.x + dx * player.speed));
+  player.y = Math.max(20, Math.min(H - 20, player.y + dy * player.speed));
+
+  // fire
+  if (keys[' '] && performance.now() - player.lastShot > player.fireRate) {
+    player.lastShot = performance.now();
+    fireBullet();
+  }
+
+  // bullets
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+
+    // corkscrew motion for twin
+    if (b.sineAmp !== undefined) {
+      b.sinePhase = (b.sinePhase || 0) + 0.35;
+      b.y += Math.sin(b.sinePhase) * b.sineAmp;
+    }
+
+    // pulse for plasma
+    if (b.pulse !== undefined) {
+      b.pulse += 0.25;
+    }
+
+    // grow size for flames
+    if (b.growSize) {
+      b.size += 0.15;
+    }
+
+    b.x += b.vx; b.y += b.vy;
+
+    // emit trail particles
+    if (b.trail && frame % 2 === 0) {
+      particles.push({
+        x: b.x - b.vx * 0.3 + (Math.random() - 0.5) * 2,
+        y: b.y + (Math.random() - 0.5) * 2,
+        vx: -b.vx * 0.1, vy: (Math.random() - 0.5) * 0.5,
+        life: 14, max: 14,
+        color: b.trailColor || b.color,
+        size: b.size * 0.5,
+      });
+    }
+
+    // life timer for short-lived bullets
+    if (b.life !== undefined) {
+      b.life--;
+      if (b.life <= 0) { bullets.splice(i, 1); continue; }
+    }
+
+    if (b.x > W + 40 || b.x < -40 || b.y < -40 || b.y > H + 40) bullets.splice(i, 1);
+  }
+
+  // enemy spawn / wave logic
+  if (--spawnCountdown <= 0 && enemiesLeftInWave > 0) {
+    spawnEnemy();
+    spawnCountdown = levelData.spawnRate + Math.floor(Math.random() * 30);
+  }
+
+  // wave complete -> next wave
+  if (enemiesLeftInWave <= 0 && enemies.length === 0) {
+    waveIndex++;
+    if (waveIndex >= levelData.waves) {
+      // level complete
+      onLevelWin();
+      return;
+    }
+    enemiesLeftInWave = 4 + Math.floor(levelData.waves * 1.5) + waveIndex;
+    spawnCountdown = 90;
+    showLevelBanner(`ΚΥΜΑ ${waveIndex + 1}`);
+  }
+
+  // enemies move
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.x -= e.speed;
+    e.y += Math.sin((frame + e.sineOffset * 30) * 0.04) * e.sineAmp * 0.04;
+    e.y = Math.max(20, Math.min(H - 20, e.y));
+    if (e.x < -50) { enemies.splice(i, 1); continue; }
+    // shoot
+    if (Math.random() < e.fireChance) {
+      eBullets.push({
+        x: e.x - 18, y: e.y,
+        vx: -7, vy: 0,
+        size: 4, color: '#ff2bd6',
+      });
+    }
+  }
+
+  // enemy bullets
+  for (let i = eBullets.length - 1; i >= 0; i--) {
+    const b = eBullets[i];
+    b.x += b.vx; b.y += b.vy;
+    if (b.x < -20 || b.x > W + 20) eBullets.splice(i, 1);
+  }
+
+  // collisions: player bullets vs enemies
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    let consumed = false;
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      if (Math.abs(b.x - e.x) < e.w/2 + 4 && Math.abs(b.y - e.y) < e.h/2 + 4) {
+        e.hp -= b.dmg;
+        spawnParticles(b.x, b.y, '#ffe600', 6, 3);
+
+        // PLASMA: area-of-effect explosion damaging nearby enemies
+        if (b.areaDmg) {
+          spawnParticles(b.x, b.y, '#ff2b3e', 24, 6);
+          spawnParticles(b.x, b.y, '#ffe600', 18, 5);
+          particles.push({
+            x: b.x, y: b.y, vx: 0, vy: 0, life: 24, max: 24,
+            color: '#ffe600', size: 8, ring: true, ringRadius: 8,
+          });
+          // splash damage
+          for (const other of enemies) {
+            if (other === e) continue;
+            const dx = other.x - b.x, dy = other.y - b.y;
+            if (dx*dx + dy*dy < 80*80) {
+              other.hp -= 2;
+              spawnParticles(other.x, other.y, '#ff2b3e', 6, 3);
+            }
+          }
+        }
+
+        if (e.hp <= 0) {
+          spawnParticles(e.x, e.y, '#ff8c00', 22, 5);
+          spawnParticles(e.x, e.y, '#ffe600', 10, 4);
+          particles.push({
+            x: e.x, y: e.y, vx: 0, vy: 0, life: 16, max: 16,
+            color: '#ff8c00', size: 4, ring: true, ringRadius: 4,
+          });
+          score += (e.type === 'gunship' ? 200 : e.type === 'dart' ? 100 : 50);
+          enemies.splice(j, 1);
+        }
+        if (b.bullet !== 'piercing' && !b.pierce) { bullets.splice(i, 1); consumed = true; }
+        break;
+      }
+    }
+    if (consumed) continue;
+  }
+
+  // collisions: enemy bullets vs player
+  if (player.invuln <= 0) {
+    for (let i = eBullets.length - 1; i >= 0; i--) {
+      const b = eBullets[i];
+      if (Math.abs(b.x - player.x) < 18 && Math.abs(b.y - player.y) < 12) {
+        player.hp -= 10;
+        player.invuln = 40;
+        spawnParticles(player.x, player.y, '#00f0ff', 12, 4);
+        eBullets.splice(i, 1);
+      }
+    }
+    // ramming
+    for (const e of enemies) {
+      if (Math.abs(e.x - player.x) < e.w/2 + 16 && Math.abs(e.y - player.y) < e.h/2 + 12) {
+        player.hp -= 25;
+        player.invuln = 50;
+        spawnParticles(player.x, player.y, '#ff2b3e', 20, 5);
+        e.hp = 0;
+        spawnParticles(e.x, e.y, '#ff8c00', 16, 4);
+        enemies.splice(enemies.indexOf(e), 1);
+        break;
+      }
+    }
+  } else {
+    player.invuln--;
+  }
+
+  if (player.hp <= 0) onLevelLose();
+
+  updateParticles();
+  setHUD();
+}
+
+function fireBullet() {
+  const bx = player.x + 24, by = player.y;
+
+  if (player.bullet === 'single') {
+    // ΜΟΝΗ — charged laser bolt with glow trail
+    bullets.push({
+      x: bx, y: by, vx: 16, vy: 0, dmg: 1, size: 5,
+      color: player.accent, bullet: 'single',
+      glow: 18, trail: true, trailColor: player.accent,
+    });
+    // muzzle flash
+    spawnParticles(bx, by, player.accent, 6, 3);
+
+  } else if (player.bullet === 'twin') {
+    // ΔΙΔΥΜΗ — rapid twin pulse with corkscrew trail
+    bullets.push({
+      x: bx, y: by - 6, vx: 17, vy: 0, dmg: 1, size: 4,
+      color: player.accent, bullet: 'twin',
+      glow: 14, trail: true, trailColor: '#ff2bd6',
+      sineAmp: 1.5, sinePhase: 0,
+    });
+    bullets.push({
+      x: bx, y: by + 6, vx: 17, vy: 0, dmg: 1, size: 4,
+      color: player.accent, bullet: 'twin',
+      glow: 14, trail: true, trailColor: '#ff2bd6',
+      sineAmp: 1.5, sinePhase: Math.PI,
+    });
+    spawnParticles(bx, by - 6, player.accent, 4, 2);
+    spawnParticles(bx, by + 6, player.accent, 4, 2);
+
+  } else if (player.bullet === 'spread') {
+    // ΡΙΠΗ — five-way shotgun blast with shockwave
+    const angles = [-0.32, -0.16, 0, 0.16, 0.32];
+    for (const a of angles) {
+      bullets.push({
+        x: bx, y: by,
+        vx: Math.cos(a) * 13,
+        vy: Math.sin(a) * 13,
+        dmg: a === 0 ? 3 : 2,
+        size: a === 0 ? 6 : 5,
+        color: player.accent, bullet: 'spread',
+        glow: 16, trail: true, trailColor: '#ff8c00',
+      });
+    }
+    // shockwave ring
+    particles.push({
+      x: bx, y: by, vx: 0, vy: 0, life: 18, max: 18,
+      color: player.accent, size: 4, ring: true, ringRadius: 4,
+    });
+    spawnParticles(bx, by, '#ff8c00', 10, 4);
+
+  } else if (player.bullet === 'piercing') {
+    // ΔΙΑΤΡΗΤΙΚΗ — railgun beam with twin escort sparks
+    bullets.push({
+      x: bx, y: by, vx: 22, vy: 0, dmg: 2, size: 8,
+      color: player.accent, bullet: 'piercing',
+      glow: 24, trail: true, trailColor: '#39ff14',
+      length: 36,
+    });
+    // escort sparks
+    bullets.push({
+      x: bx - 4, y: by - 4, vx: 19, vy: -0.3, dmg: 1, size: 3,
+      color: '#39ff14', bullet: 'spark',
+      glow: 10, trail: true, trailColor: '#39ff14', life: 40,
+    });
+    bullets.push({
+      x: bx - 4, y: by + 4, vx: 19, vy: 0.3, dmg: 1, size: 3,
+      color: '#39ff14', bullet: 'spark',
+      glow: 10, trail: true, trailColor: '#39ff14', life: 40,
+    });
+    // big muzzle flash
+    spawnParticles(bx, by, '#39ff14', 16, 5);
+    spawnParticles(bx, by, '#ffffff', 6, 3);
+
+  } else if (player.bullet === 'plasma') {
+    // ΠΛΑΣΜΑ — heavy plasma orb that pulses, plus chasing tendrils
+    bullets.push({
+      x: bx, y: by, vx: 14, vy: 0, dmg: 4, size: 12,
+      color: player.accent, bullet: 'plasma',
+      glow: 28, trail: true, trailColor: '#ff2b3e',
+      pulse: 0, areaDmg: true,
+    });
+    // chasing tendril sparks
+    for (let i = 0; i < 3; i++) {
+      bullets.push({
+        x: bx, y: by + (Math.random() - 0.5) * 16,
+        vx: 11 + Math.random() * 3,
+        vy: (Math.random() - 0.5) * 2,
+        dmg: 1, size: 3,
+        color: '#ffe600', bullet: 'tendril',
+        glow: 12, trail: true, trailColor: '#ffe600',
+        life: 50,
+      });
+    }
+    // muzzle blast
+    spawnParticles(bx, by, '#ffe600', 14, 5);
+    spawnParticles(bx, by, '#ff2b3e', 10, 4);
+    particles.push({
+      x: bx, y: by, vx: 0, vy: 0, life: 20, max: 20,
+      color: '#ffe600', size: 6, ring: true, ringRadius: 6,
+    });
+
+  } else if (player.bullet === 'flamewave') {
+    // ΦΛΟΓΑ — expanding flame wave that grows as it travels, leaves burning particles
+    bullets.push({
+      x: bx, y: by, vx: 12, vy: 0, dmg: 2, size: 10,
+      color: '#ff4500', bullet: 'flamewave',
+      glow: 22, trail: true, trailColor: '#ffe600',
+      growSize: true, areaDmg: true,
+    });
+    // multiple flame tongues
+    for (let i = 0; i < 5; i++) {
+      const angle = (i - 2) * 0.12;
+      bullets.push({
+        x: bx, y: by,
+        vx: Math.cos(angle) * 11,
+        vy: Math.sin(angle) * 11,
+        dmg: 1, size: 5,
+        color: '#ff8c00', bullet: 'flametongue',
+        glow: 14, trail: true, trailColor: '#ff4500',
+        life: 35, growSize: true,
+      });
+    }
+    // big muzzle blast
+    spawnParticles(bx, by, '#ff4500', 18, 5);
+    spawnParticles(bx, by, '#ffe600', 12, 4);
+    spawnParticles(bx, by, '#ff8c00', 14, 4);
+    particles.push({
+      x: bx, y: by, vx: 0, vy: 0, life: 22, max: 22,
+      color: '#ff4500', size: 8, ring: true, ringRadius: 6,
+    });
+
+  } else if (player.bullet === 'voidbeam') {
+    // ΑΚΤΙΝΑ ΚΕΝΟΥ — devastating void beam, pierces all, area damage on hit
+    bullets.push({
+      x: bx, y: by, vx: 26, vy: 0, dmg: 4, size: 14,
+      color: '#9d4edd', bullet: 'voidbeam',
+      glow: 30, trail: true, trailColor: '#ff00ff',
+      length: 60, pierce: true, areaDmg: true,
+    });
+    // dark energy particles spiraling
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2;
+      bullets.push({
+        x: bx, y: by, vx: 22, vy: Math.sin(a) * 0.5,
+        dmg: 1, size: 4,
+        color: '#ff00ff', bullet: 'voidspark',
+        glow: 14, trail: true, trailColor: '#9d4edd',
+        sineAmp: 0.8, sinePhase: a, life: 60,
+      });
+    }
+    // huge muzzle effect
+    spawnParticles(bx, by, '#9d4edd', 22, 6);
+    spawnParticles(bx, by, '#ff00ff', 16, 5);
+    spawnParticles(bx, by, '#ffffff', 10, 4);
+    particles.push({
+      x: bx, y: by, vx: 0, vy: 0, life: 28, max: 28,
+      color: '#ff00ff', size: 10, ring: true, ringRadius: 8,
+    });
+    particles.push({
+      x: bx, y: by, vx: 0, vy: 0, life: 22, max: 22,
+      color: '#9d4edd', size: 6, ring: true, ringRadius: 4,
+    });
+  }
+}
+
+/* ---------- DRAW ---------- */
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // bg gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#0a0830');
+  grad.addColorStop(1, '#04020f');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  drawStars();
+  drawParticles();
+
+  // bullets
+  for (const b of bullets) {
+    ctx.save();
+    ctx.shadowColor = b.color;
+    ctx.shadowBlur = b.glow || 12;
+
+    if (b.bullet === 'plasma') {
+      // outer pulsing aura
+      const pulse = 1 + Math.sin(b.pulse || 0) * 0.25;
+      ctx.fillStyle = 'rgba(255, 230, 0, 0.25)';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size * 1.8 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      // core
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      // hot center
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (b.bullet === 'flamewave' || b.bullet === 'flametongue') {
+      // outer flame layer
+      ctx.fillStyle = 'rgba(255, 69, 0, 0.4)';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      // mid flame
+      ctx.fillStyle = '#ff8c00';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+      ctx.fill();
+      // hot core
+      ctx.fillStyle = '#ffe600';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      // white-hot center
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (b.bullet === 'voidbeam') {
+      // void beam — long with energy crackle
+      const len = b.length || 24;
+      // outer aura
+      ctx.fillStyle = 'rgba(157, 78, 221, 0.4)';
+      ctx.fillRect(b.x - len, b.y - b.size, len, b.size * 2);
+      // mid layer
+      ctx.fillStyle = b.color;
+      ctx.fillRect(b.x - len, b.y - b.size/2, len, b.size);
+      // bright inner
+      ctx.fillStyle = '#ff00ff';
+      ctx.fillRect(b.x - len, b.y - b.size/3, len, b.size * 0.66);
+      // white-hot core
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(b.x - len, b.y - 2, len, 4);
+      // crackling sparks at the head
+      for (let i = 0; i < 2; i++) {
+        const cy = b.y + (Math.random() - 0.5) * b.size * 2;
+        ctx.fillStyle = '#ff00ff';
+        ctx.fillRect(b.x - 2, cy - 1, 4, 2);
+      }
+
+    } else if (b.bullet === 'voidspark') {
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.size * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (b.bullet === 'piercing') {
+      // long railgun beam
+      const len = b.length || 24;
+      ctx.fillStyle = b.color;
+      ctx.fillRect(b.x - len, b.y - b.size/2, len, b.size);
+      // bright core
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(b.x - len, b.y - 1.5, len, 3);
+
+    } else {
+      // standard glowing bolt
+      ctx.fillStyle = b.color;
+      ctx.fillRect(b.x - b.size, b.y - b.size/2, b.size * 2, b.size);
+      // hot core
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(b.x - b.size * 0.6, b.y - 1, b.size * 1.2, 2);
+    }
+    ctx.restore();
+  }
+  for (const b of eBullets) {
+    ctx.save();
+    ctx.shadowColor = b.color; ctx.shadowBlur = 10;
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x - b.size, b.y - 1.5, b.size * 2, 3);
+    ctx.restore();
+  }
+
+  // enemies + their hp bars
+  for (const e of enemies) {
+    drawEnemyShip(e);
+    if (e.hp < e.maxHp) {
+      const w = 30, pct = e.hp / e.maxHp;
+      ctx.fillStyle = '#400'; ctx.fillRect(e.x - w/2, e.y - e.h/2 - 8, w, 3);
+      ctx.fillStyle = '#ff2b3e'; ctx.fillRect(e.x - w/2, e.y - e.h/2 - 8, w * pct, 3);
+    }
+  }
+
+  // player
+  if (player) {
+    if (player.invuln > 0 && Math.floor(frame / 4) % 2 === 0) {
+      // blink
+    } else {
+      drawPlayerShip(player);
+    }
+  }
+
+  if (paused) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffe600';
+    ctx.font = 'bold 60px Orbitron, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('ΠΑΥΣΗ', W/2, H/2);
+    ctx.font = '20px Orbitron, monospace';
+    ctx.fillText('πάτησε ENTER ή ▶ για συνέχεια', W/2, H/2 + 40);
+  }
+}
+
+/* ---------- WIN / LOSE ---------- */
+function onLevelWin() {
+  state = STATE.WIN;
+  // update progress
+  let unlockText = '';
+  if (levelData.num >= save.maxLevel) {
+    save.maxLevel = Math.min(LEVELS.length, levelData.num + 1);
+    save.currentLevel = save.maxLevel;
+    // pilot unlocks
+    const newlyUnlocked = PILOTS.filter(p =>
+      p.unlockLevel === levelData.num && p.unlockLevel > 0
+    );
+    if (newlyUnlocked.length) {
+      unlockText = `>> ΝΕΟΣ ΠΙΛΟΤΟΣ ΞΕΚΛΕΙΔΩΘΗΚΕ: ${newlyUnlocked.map(p => p.name).join(', ').toUpperCase()} <<`;
+    }
+  }
+  if (score > save.highScore) save.highScore = score;
+  saveSave();
+  document.getElementById('unlock-msg').textContent = unlockText;
+  document.getElementById('win-msg').textContent =
+    `Τομέας ${levelData.num} καθαρός. Σκορ: ${score}. ` +
+    (levelData.num === LEVELS.length ? 'ΕΧΕΙΣ ΣΥΝΤΡΙΨΕΙ ΤΗΝ ΑΥΤΟΚΡΑΤΟΡΙΑ. Η Εξέγερση θριάμβευσε!' : 'Η Εξέγερση ζει για άλλη μια μέρα.');
+  showScreen('screen-win');
+}
+
+function onLevelLose() {
+  state = STATE.LOSE;
+  showScreen('screen-lose');
+}
+
+/* ---------- LOOP ---------- */
+function loop() {
+  if (state === STATE.PLAYING) {
+    update();
+    draw();
+  } else if (state === STATE.PAUSED) {
+    draw();
+  } else {
+    // idle: just animate stars in background canvas behind menus
+    ctx.clearRect(0, 0, W, H);
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0a0830'); grad.addColorStop(1, '#04020f');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    if (!stars) stars = makeStars();
+    drawStars();
+  }
+  requestAnimationFrame(loop);
+}
+
+/* ---------- UI / SCREENS ---------- */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  if (id) document.getElementById(id).classList.remove('hidden');
+  // pause button only visible during play (when no screen is showing)
+  const pauseBtn = document.getElementById('btn-pause');
+  if (pauseBtn) {
+    if (id) pauseBtn.classList.add('hidden');
+    else pauseBtn.classList.remove('hidden');
+  }
+}
+
+function weaponLabel(b) {
+  return ({
+    single: 'ΜΟΝΗ',
+    twin: 'ΔΙΔΥΜΗ',
+    spread: 'ΡΙΠΗ',
+    piercing: 'ΔΙΑΤΡΗΤΙΚΗ',
+    plasma: 'ΠΛΑΣΜΑ',
+    flamewave: 'ΦΛΟΓΑ',
+    voidbeam: 'ΑΚΤΙΝΑ ΚΕΝΟΥ',
+  })[b] || b.toUpperCase();
+}
+
+function renderHangar() {
+  const grid = document.getElementById('pilot-grid');
+  grid.innerHTML = '';
+  document.getElementById('hangar-level-info').textContent =
+    `ΤΟΜΕΑΣ ${save.currentLevel} :: ${LEVELS[save.currentLevel - 1].name}`;
+
+  for (const p of PILOTS) {
+    const unlocked = save.maxLevel > p.unlockLevel;
+    const card = document.createElement('div');
+    card.className = 'pilot-card' + (!unlocked ? ' locked' : '') + (save.selectedPilot === p.id && unlocked ? ' selected' : '');
+    card.innerHTML = `
+      <div class="pilot-name">${p.name}</div>
+      <div class="pilot-meta">${unlocked ? p.ship : '🔒 ΚΛΕΙΔΩΜΕΝΟ — καθάρισε τον τομέα ' + p.unlockLevel}</div>
+      ${unlocked ? `
+        <div class="pilot-meta" style="margin-top:6px; font-size:13px; opacity:0.8">${p.blurb}</div>
+        <div class="stat-row"><span>ΚΥΤΟΣ</span><span class="stat-bar"><span class="stat-bar-fill" style="width:${p.hull/2}%"></span></span></div>
+        <div class="stat-row"><span>ΤΑΧΥΤΗΤΑ</span><span class="stat-bar"><span class="stat-bar-fill" style="width:${p.speed*12}%"></span></span></div>
+        <div class="stat-row"><span>ΡΥΘΜΟΣ</span><span class="stat-bar"><span class="stat-bar-fill" style="width:${100 - p.fireRate/5}%"></span></span></div>
+        <div class="stat-row"><span>ΟΠΛΟ</span><span style="font-size:11px">${weaponLabel(p.bullet)}</span></div>
+      ` : ''}
+    `;
+    if (unlocked) {
+      card.addEventListener('click', () => {
+        save.selectedPilot = p.id;
+        saveSave();
+        renderHangar();
+      });
+    }
+    grid.appendChild(card);
+  }
+}
+
+document.getElementById('btn-start').onclick = () => { renderHangar(); showScreen('screen-hangar'); };
+document.getElementById('btn-back-title').onclick = () => showScreen('screen-title');
+document.getElementById('btn-launch').onclick = () => { showScreen(null); startLevel(save.currentLevel); };
+document.getElementById('btn-next').onclick = () => {
+  if (save.currentLevel < LEVELS.length && save.currentLevel < save.maxLevel) save.currentLevel++;
+  saveSave();
+  renderHangar();
+  showScreen('screen-hangar');
+};
+document.getElementById('btn-hangar').onclick = () => { renderHangar(); showScreen('screen-hangar'); };
+document.getElementById('btn-hangar2').onclick = () => { renderHangar(); showScreen('screen-hangar'); };
+document.getElementById('btn-retry').onclick = () => { showScreen(null); startLevel(save.currentLevel); };
+document.getElementById('btn-reset').onclick = () => {
+  if (confirm('Διαγραφή όλης της προόδου και των ξεκλειδωμάτων;')) {
+    save = { maxLevel: 1, currentLevel: 1, selectedPilot: 'cadet', highScore: 0 };
+    saveSave();
+    alert('Η πρόοδος επαναφέρθηκε.');
+  }
+};
+
+/* ---------- BOOT ---------- */
+stars = makeStars();
+document.getElementById('btn-pause').classList.add('hidden');
+showScreen('screen-title');
+loop();
+</script>
+</body>
+</html>
