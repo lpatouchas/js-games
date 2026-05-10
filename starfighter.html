@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>ΑΣΤΡΟΜΑΧΗΤΗΣ: ΕΞΕΓΕΡΣΗ</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=VT323&family=Orbitron:wght@400;700;900&display=swap');
@@ -26,6 +29,10 @@
     font-family: 'VT323', monospace;
     overflow: hidden;
     user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    overscroll-behavior: none;
   }
 
   body {
@@ -72,11 +79,131 @@
     background: var(--bg-deep);
   }
 
+  /* Mobile / small screens: fill whole viewport, drop the desktop chrome */
+  @media (max-width: 900px), (pointer: coarse) {
+    #game-wrap {
+      width: 100vw;
+      height: 100vh;
+      aspect-ratio: auto;
+      border: none;
+      box-shadow: none;
+    }
+    /* Bigger tap targets */
+    button {
+      padding: 14px 28px;
+      font-size: 16px;
+      min-height: 48px;
+    }
+    .pause-btn { width: 56px; height: 56px; font-size: 26px; }
+    .mute-btn, .music-btn { width: 44px; height: 44px; font-size: 18px; }
+    .pilot-grid {
+      grid-template-columns: 1fr;
+      max-height: 50vh;
+    }
+    /* Smaller HUD on phones so it doesn't crowd the screen */
+    .hud-corner { padding: 8px 10px; font-size: 10px; }
+    .hud-label { font-size: 9px; }
+    .hud-value { font-size: 14px; }
+    .hp-bar { width: 90px; }
+    /* Title screen smaller */
+    .title { font-size: clamp(28px, 8vw, 48px); letter-spacing: 4px; }
+    .crawl { font-size: 16px; }
+    .controls-hint { font-size: 11px; letter-spacing: 1px; }
+  }
+
   canvas {
     display: block;
     width: 100%;
     height: 100%;
     image-rendering: pixelated;
+  }
+
+  /* Touch controls: hidden by default, shown on mobile/touch devices */
+  #touch-controls {
+    display: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+  }
+  #touch-controls.show { display: block; }
+
+  .touch-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 18px;
+  }
+  #touch-fire {
+    left: 0;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(255, 230, 0, 0.06) 0%,
+      transparent 70%
+    );
+    border-right: 1px dashed rgba(255, 230, 0, 0.15);
+  }
+  #touch-fire:active, #touch-fire.firing {
+    background: radial-gradient(
+      ellipse at center,
+      rgba(255, 230, 0, 0.18) 0%,
+      transparent 60%
+    );
+  }
+  #touch-move {
+    right: 0;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(0, 240, 255, 0.06) 0%,
+      transparent 70%
+    );
+  }
+
+  .touch-label {
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: rgba(255, 255, 255, 0.45);
+    text-shadow: 0 0 6px currentColor;
+    pointer-events: none;
+    transition: opacity 1s;
+  }
+  #touch-controls.touched .touch-label { opacity: 0.15; }
+  #touch-fire .touch-label { color: rgba(255, 230, 0, 0.5); }
+  #touch-move .touch-label { color: rgba(0, 240, 255, 0.5); }
+
+  /* Virtual joystick — appears at touch point */
+  #touch-joystick {
+    position: absolute;
+    width: 110px;
+    height: 110px;
+    border: 2px solid rgba(0, 240, 255, 0.4);
+    border-radius: 50%;
+    background: rgba(0, 240, 255, 0.05);
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    display: none;
+  }
+  #touch-joystick.active { display: block; }
+  #touch-joystick-knob {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 50px;
+    height: 50px;
+    margin: -25px 0 0 -25px;
+    background: rgba(0, 240, 255, 0.4);
+    border: 2px solid var(--neon-cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 15px var(--neon-cyan);
+    transition: transform 0.05s;
   }
 
   /* HUD */
@@ -250,6 +377,11 @@
     opacity: 0.5;
     letter-spacing: 2px;
   }
+  .hint-mobile { display: none; }
+  @media (pointer: coarse), (max-width: 700px) {
+    .hint-desktop { display: none; }
+    .hint-mobile { display: inline; }
+  }
 
   /* Pause button — visible during play */
   .pause-btn {
@@ -382,6 +514,19 @@
 <div id="game-wrap">
   <canvas id="game" width="1280" height="720"></canvas>
 
+  <!-- TOUCH CONTROLS — only shown on touch devices -->
+  <div id="touch-controls">
+    <div id="touch-fire" class="touch-zone">
+      <div class="touch-label">⚡ ΠΥΡ</div>
+    </div>
+    <div id="touch-move" class="touch-zone">
+      <div class="touch-label">↕ ΚΙΝΗΣΗ</div>
+      <div id="touch-joystick">
+        <div id="touch-joystick-knob"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="hud">
     <div class="hud-corner" id="hud-tl">
       <span class="hud-label">ΠΙΛΟΤΟΣ</span>
@@ -413,7 +558,10 @@
     <p class="crawl">Η Αυτοκρατορία Ντομίνιον έχει συντρίψει κάθε αντίσταση εκτός από μία: ένα κουρελιασμένο σμήνος πιλότων που πετούν με σκάφη διασωσμένα από τις παρυφές του γνωστού διαστήματος. Είσαι ο νεότερος νεοσύλλεκτός τους.</p>
     <button id="btn-start">ΕΚΚΙΝΗΣΗ</button>
     <button id="btn-reset">ΕΠΑΝΑΦΟΡΑ ΠΡΟΟΔΟΥ</button>
-    <div class="controls-hint">ΒΕΛΗ / WASD — ΚΙΝΗΣΗ  ·  SPACE — ΠΥΡ  ·  ENTER / ⏸ — ΠΑΥΣΗ</div>
+    <div class="controls-hint">
+      <span class="hint-desktop">ΒΕΛΗ / WASD — ΚΙΝΗΣΗ  ·  SPACE — ΠΥΡ  ·  ENTER / ⏸ — ΠΑΥΣΗ</span>
+      <span class="hint-mobile">ΑΡΙΣΤΕΡΑ — ΠΥΡ  ·  ΔΕΞΙΑ — ΚΙΝΗΣΗ (joystick)</span>
+    </div>
   </div>
 
   <!-- HANGAR / PILOT SELECT -->
@@ -879,6 +1027,135 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup',   e => keys[e.key.toLowerCase()] = false);
 
+/* ---------- TOUCH INPUT ---------- */
+const touch = {
+  firing: false,
+  fireTouchId: null,
+  // movement vector from joystick: -1..1 on each axis
+  moveX: 0, moveY: 0,
+  moveTouchId: null,
+  joystickStartX: 0, joystickStartY: 0,
+};
+
+// Detect touch device — show controls if so
+const isTouchDevice = ('ontouchstart' in window) ||
+                     (navigator.maxTouchPoints > 0) ||
+                     window.matchMedia('(pointer: coarse)').matches;
+
+if (isTouchDevice) {
+  document.getElementById('touch-controls').classList.add('show');
+}
+
+function setupTouchControls() {
+  const fireZone = document.getElementById('touch-fire');
+  const moveZone = document.getElementById('touch-move');
+  const joystick = document.getElementById('touch-joystick');
+  const knob = document.getElementById('touch-joystick-knob');
+
+  // FIRE zone — pressing anywhere on the left fires
+  fireZone.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    initAudioOnce();
+    document.getElementById('touch-controls').classList.add('touched');
+    for (const t of e.changedTouches) {
+      if (touch.fireTouchId === null) {
+        touch.fireTouchId = t.identifier;
+        touch.firing = true;
+        fireZone.classList.add('firing');
+        break;
+      }
+    }
+  }, { passive: false });
+
+  fireZone.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === touch.fireTouchId) {
+        touch.firing = false;
+        touch.fireTouchId = null;
+        fireZone.classList.remove('firing');
+        break;
+      }
+    }
+  }, { passive: false });
+
+  fireZone.addEventListener('touchcancel', (e) => {
+    touch.firing = false;
+    touch.fireTouchId = null;
+    fireZone.classList.remove('firing');
+  });
+
+  // MOVE zone — virtual joystick that follows the finger
+  const JOYSTICK_RADIUS = 55; // matches CSS
+
+  function updateJoystick(touchX, touchY) {
+    const dx = touchX - touch.joystickStartX;
+    const dy = touchY - touch.joystickStartY;
+    const dist = Math.hypot(dx, dy);
+    const clampedDist = Math.min(dist, JOYSTICK_RADIUS);
+    const angle = Math.atan2(dy, dx);
+    const knobX = Math.cos(angle) * clampedDist;
+    const knobY = Math.sin(angle) * clampedDist;
+    knob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+    // normalized vector (small dead zone at center)
+    const deadZone = 8;
+    if (dist < deadZone) {
+      touch.moveX = 0; touch.moveY = 0;
+    } else {
+      touch.moveX = (knobX / JOYSTICK_RADIUS);
+      touch.moveY = (knobY / JOYSTICK_RADIUS);
+    }
+  }
+
+  moveZone.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    initAudioOnce();
+    document.getElementById('touch-controls').classList.add('touched');
+    for (const t of e.changedTouches) {
+      if (touch.moveTouchId === null) {
+        touch.moveTouchId = t.identifier;
+        const rect = moveZone.getBoundingClientRect();
+        touch.joystickStartX = t.clientX;
+        touch.joystickStartY = t.clientY;
+        // position joystick relative to the moveZone container
+        const localX = t.clientX - rect.left;
+        const localY = t.clientY - rect.top;
+        joystick.style.left = localX + 'px';
+        joystick.style.top = localY + 'px';
+        joystick.classList.add('active');
+        knob.style.transform = 'translate(0, 0)';
+        touch.moveX = 0; touch.moveY = 0;
+        break;
+      }
+    }
+  }, { passive: false });
+
+  moveZone.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === touch.moveTouchId) {
+        updateJoystick(t.clientX, t.clientY);
+        break;
+      }
+    }
+  }, { passive: false });
+
+  function endMove(e) {
+    for (const t of e.changedTouches) {
+      if (t.identifier === touch.moveTouchId) {
+        touch.moveTouchId = null;
+        touch.moveX = 0; touch.moveY = 0;
+        joystick.classList.remove('active');
+        knob.style.transform = 'translate(0, 0)';
+        break;
+      }
+    }
+  }
+  moveZone.addEventListener('touchend', endMove, { passive: false });
+  moveZone.addEventListener('touchcancel', endMove, { passive: false });
+}
+setupTouchControls();
+
 function togglePause() {
   if (state !== STATE.PLAYING) return;
   paused = !paused;
@@ -1323,18 +1600,24 @@ function update() {
   frame++;
   if (paused) return;
 
-  // input
+  // input — combines keyboard and touch
   let dx = 0, dy = 0;
   if (keys['arrowleft']  || keys['a']) dx = -1;
   if (keys['arrowright'] || keys['d']) dx =  1;
   if (keys['arrowup']    || keys['w']) dy = -1;
   if (keys['arrowdown']  || keys['s']) dy =  1;
-  if (dx && dy) { dx *= 0.707; dy *= 0.707; }
+  // touch joystick overrides if active
+  if (touch.moveX !== 0 || touch.moveY !== 0) {
+    dx = touch.moveX;
+    dy = touch.moveY;
+  } else if (dx && dy) {
+    dx *= 0.707; dy *= 0.707;
+  }
   player.x = Math.max(20, Math.min(W - 20, player.x + dx * player.speed));
   player.y = Math.max(20, Math.min(H - 20, player.y + dy * player.speed));
 
-  // fire
-  if (keys[' '] && performance.now() - player.lastShot > player.fireRate) {
+  // fire — keyboard space OR touch fire button
+  if ((keys[' '] || touch.firing) && performance.now() - player.lastShot > player.fireRate) {
     player.lastShot = performance.now();
     fireBullet();
   }
@@ -1891,6 +2174,12 @@ function showScreen(id) {
     if (id) pauseBtn.classList.add('hidden');
     else pauseBtn.classList.remove('hidden');
   }
+  // touch controls only visible during play
+  const touchControls = document.getElementById('touch-controls');
+  if (touchControls && isTouchDevice) {
+    if (id) touchControls.classList.remove('show');
+    else touchControls.classList.add('show');
+  }
   // music: menu music when on screens, battle when playing
   if (id) Music.start('menu');
   else Music.start('battle');
@@ -2004,6 +2293,7 @@ document.getElementById('btn-music').addEventListener('click', () => {
 /* ---------- BOOT ---------- */
 stars = makeStars();
 document.getElementById('btn-pause').classList.add('hidden');
+document.getElementById('touch-controls').classList.remove('show');
 showScreen('screen-title');
 loop();
 </script>
